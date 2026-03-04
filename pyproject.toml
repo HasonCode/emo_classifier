@@ -20,6 +20,7 @@ pandas = ">=2.0.0"
 fastapi = ">=0.104.0"
 uvicorn = {extras = ["standard"], version = ">=0.24.0"}
 joblib = "^1.5.3"
+python-multipart = "^0.0.22"
 
 [tool.poetry.group.dev.dependencies]
 # Add dev tools here if needed, e.g. pytest, ruff, mypy

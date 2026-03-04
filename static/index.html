@@ -24,9 +24,63 @@
     }
     .subtitle {
       color: #888;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       font-size: 0.95rem;
     }
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1rem;
+    }
+    .tab {
+      padding: 0.5rem 1rem;
+      border: 1px solid #444;
+      background: transparent;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 0.9rem;
+      border-radius: 8px 8px 0 0;
+    }
+    .tab.active {
+      background: #222;
+      color: #fff;
+      border-bottom-color: transparent;
+    }
+    .panel {
+      display: none;
+      max-width: 420px;
+      width: 100%;
+    }
+    .panel.active {
+      display: block;
+    }
+    #panel-spotify {
+      padding: 1.5rem;
+      border: 2px dashed #444;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.2);
+    }
+    .url-input {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 8px;
+      border: 1px solid #444;
+      background: #1a1a2e;
+      color: #eee;
+      font-size: 0.9rem;
+      margin-bottom: 0.75rem;
+    }
+    .url-input::placeholder { color: #666; }
+    .submit-btn {
+      padding: 0.6rem 1.5rem;
+      background: #e91e63;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .submit-btn:hover { opacity: 0.9; }
     .upload-zone {
       border: 2px dashed #444;
       border-radius: 12px;
@@ -34,8 +88,6 @@
       text-align: center;
       cursor: pointer;
       transition: border-color 0.2s, background 0.2s;
-      max-width: 420px;
-      width: 100%;
     }
     .upload-zone:hover, .upload-zone.dragover {
       border-color: #e91e63;
@@ -70,17 +122,44 @@
       background: rgba(33, 150, 243, 0.15);
       border: 1px solid rgba(33, 150, 243, 0.3);
     }
+    .result .verdict {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      opacity: 0.8;
+      margin-bottom: 0.5rem;
+    }
     .result .label {
-      font-size: 1.5rem;
+      font-size: 2rem;
       font-weight: 700;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0.75rem;
     }
     .result.emo .label { color: #f48fb1; }
     .result.not-emo .label { color: #90caf9; }
-    .result .prob {
-      font-size: 0.9rem;
-      color: #aaa;
+    .result .confidence-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
     }
+    .result .prob {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .result .prob-bar {
+      flex: 1;
+      height: 8px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .result .prob-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .result.emo .prob-fill { background: #f48fb1; }
+    .result.not-emo .prob-fill { background: #90caf9; }
     .loading {
       display: none;
       margin-top: 1.5rem;
@@ -104,9 +183,19 @@
 </head>
 <body>
   <h1>🎸 Emo Music Classifier</h1>
-  <p class="subtitle">Upload an MP3 to find out if it's emo or not</p>
+  <p class="subtitle">Classify songs as emo or not emo</p>
 
-  <label class="upload-zone" id="zone">
+  <div class="tabs">
+    <button class="tab active" data-mode="spotify">Spotify URL</button>
+    <button class="tab" data-mode="upload">Upload file</button>
+  </div>
+
+  <div class="panel active" id="panel-spotify">
+    <input type="url" id="spotifyUrl" placeholder="Paste Spotify track URL (e.g. https://open.spotify.com/track/...)" class="url-input" />
+    <button class="submit-btn" id="submitSpotify">Classify</button>
+  </div>
+
+  <label class="panel upload-zone" id="panel-upload">
     <input type="file" id="file" accept=".mp3,.wav,.flac,.ogg,.m4a,.webm" />
     <span class="icon">📤</span>
     <p>Click or drop an audio file here</p>
@@ -116,18 +205,25 @@
   <div class="loading" id="loading">Classifying…</div>
   <div class="error" id="error"></div>
   <div class="result" id="result">
+    <div class="verdict">Verdict</div>
     <div class="label" id="resultLabel"></div>
-    <div class="prob" id="resultProb"></div>
+    <div class="confidence-wrap">
+      <span class="prob" id="resultProb"></span>
+      <div class="prob-bar"><div class="prob-fill" id="probFill"></div></div>
+    </div>
   </div>
 
   <script>
-    const zone = document.getElementById('zone');
+    const zone = document.getElementById('panel-upload');
     const fileInput = document.getElementById('file');
+    const spotifyUrl = document.getElementById('spotifyUrl');
+    const submitSpotify = document.getElementById('submitSpotify');
     const loading = document.getElementById('loading');
     const errorEl = document.getElementById('error');
     const resultEl = document.getElementById('result');
     const resultLabel = document.getElementById('resultLabel');
     const resultProb = document.getElementById('resultProb');
+    const probFill = document.getElementById('probFill');
 
     function reset() {
       loading.classList.remove('show');
@@ -141,7 +237,16 @@
       errorEl.classList.add('show');
     }
 
-    zone.addEventListener('click', () => fileInput.click());
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById('panel-' + t.dataset.mode).classList.add('active');
+      });
+    });
+
+    zone.addEventListener('click', (e) => { if (e.target !== fileInput) fileInput.click(); });
 
     zone.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -159,6 +264,48 @@
       const f = fileInput.files?.[0];
       if (f) handleFile(f);
     });
+
+    submitSpotify.addEventListener('click', () => {
+      const url = spotifyUrl.value?.trim();
+      if (!url) {
+        showError('Enter a Spotify track URL');
+        return;
+      }
+      handleSpotifyUrl(url);
+    });
+    spotifyUrl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') submitSpotify.click();
+    });
+
+    async function handleSpotifyUrl(url) {
+      reset();
+      loading.classList.add('show');
+      try {
+        const res = await fetch('/classify/spotify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          showError(data.detail || `Error ${res.status}`);
+          return;
+        }
+
+        loading.classList.remove('show');
+        resultEl.classList.add('show');
+        resultEl.classList.remove('emo', 'not-emo');
+        resultEl.classList.add(data.is_emo ? 'emo' : 'not-emo');
+        resultLabel.textContent = data.label;
+        const confidence = data.is_emo ? data.probability : (1 - data.probability);
+        const pct = (confidence * 100).toFixed(0);
+        resultProb.textContent = pct + '% confident';
+        probFill.style.width = pct + '%';
+      } catch (e) {
+        showError('Network error: ' + e.message);
+      }
+    }
 
     async function handleFile(file) {
       reset();
@@ -191,7 +338,11 @@
         resultEl.classList.remove('emo', 'not-emo');
         resultEl.classList.add(data.is_emo ? 'emo' : 'not-emo');
         resultLabel.textContent = data.label;
-        resultProb.textContent = `${(data.probability * 100).toFixed(1)}% confidence`;
+        // probability is always the emo prob; show confidence for the verdict
+        const confidence = data.is_emo ? data.probability : (1 - data.probability);
+        const pct = (confidence * 100).toFixed(0);
+        resultProb.textContent = pct + '% confident';
+        probFill.style.width = pct + '%';
       } catch (e) {
         showError('Network error: ' + e.message);
       }
