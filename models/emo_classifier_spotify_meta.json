@@ -1,0 +1,7 @@
+{
+  "feature_columns": [
+    "duration_ms",
+    "popularity",
+    "explicit"
+  ]
+}

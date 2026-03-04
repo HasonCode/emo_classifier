@@ -1,0 +1,11 @@
+.env
+.venv/
+*.joblib
+__pycache__/
+*.pyc
+data/*.csv
+data/audio/emo/*
+data/audio/not_emo/*
+!data/audio/emo/.gitkeep
+!data/audio/not_emo/.gitkeep
+

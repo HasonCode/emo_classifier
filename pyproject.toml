@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "emo-classifier"
+version = "0.1.0"
+description = "Classify whether a song is emo or not emo using Spotify features or raw audio"
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+python-dotenv = ">=1.0.0"
+spotipy = ">=2.23.0"
+requests = ">=2.31.0"
+librosa = ">=0.10.0"
+soundfile = ">=0.12.0"
+numpy = ">=1.24.0"
+scipy = ">=1.10.0"
+scikit-learn = ">=1.3.0"
+xgboost = ">=2.0.0"
+pandas = ">=2.0.0"
+fastapi = ">=0.104.0"
+uvicorn = {extras = ["standard"], version = ">=0.24.0"}
+joblib = "^1.5.3"
+
+[tool.poetry.group.dev.dependencies]
+# Add dev tools here if needed, e.g. pytest, ruff, mypy
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

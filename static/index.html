@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emo Music Classifier</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: #888;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+    .upload-zone {
+      border: 2px dashed #444;
+      border-radius: 12px;
+      padding: 3rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      max-width: 420px;
+      width: 100%;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: #e91e63;
+      background: rgba(233, 30, 99, 0.08);
+    }
+    .upload-zone input {
+      display: none;
+    }
+    .upload-zone .icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      opacity: 0.8;
+    }
+    .upload-zone p {
+      margin: 0;
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+    .result {
+      margin-top: 2rem;
+      padding: 1.5rem 2rem;
+      border-radius: 12px;
+      max-width: 420px;
+      width: 100%;
+      display: none;
+    }
+    .result.emo {
+      background: linear-gradient(135deg, rgba(233, 30, 99, 0.25), rgba(156, 39, 176, 0.2));
+      border: 1px solid rgba(233, 30, 99, 0.4);
+    }
+    .result.not-emo {
+      background: rgba(33, 150, 243, 0.15);
+      border: 1px solid rgba(33, 150, 243, 0.3);
+    }
+    .result .label {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    .result.emo .label { color: #f48fb1; }
+    .result.not-emo .label { color: #90caf9; }
+    .result .prob {
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+    .loading {
+      display: none;
+      margin-top: 1.5rem;
+      color: #888;
+      font-size: 0.9rem;
+    }
+    .loading.show { display: block; }
+    .error {
+      display: none;
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: rgba(244, 67, 54, 0.15);
+      border: 1px solid rgba(244, 67, 54, 0.4);
+      border-radius: 8px;
+      color: #ef9a9a;
+      font-size: 0.9rem;
+    }
+    .error.show { display: block; }
+    .result.show { display: block; }
+  </style>
+</head>
+<body>
+  <h1>🎸 Emo Music Classifier</h1>
+  <p class="subtitle">Upload an MP3 to find out if it's emo or not</p>
+
+  <label class="upload-zone" id="zone">
+    <input type="file" id="file" accept=".mp3,.wav,.flac,.ogg,.m4a,.webm" />
+    <span class="icon">📤</span>
+    <p>Click or drop an audio file here</p>
+    <p style="margin-top: 0.5rem; font-size: 0.8rem;">MP3, WAV, FLAC, OGG, M4A</p>
+  </label>
+
+  <div class="loading" id="loading">Classifying…</div>
+  <div class="error" id="error"></div>
+  <div class="result" id="result">
+    <div class="label" id="resultLabel"></div>
+    <div class="prob" id="resultProb"></div>
+  </div>
+
+  <script>
+    const zone = document.getElementById('zone');
+    const fileInput = document.getElementById('file');
+    const loading = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+    const resultEl = document.getElementById('result');
+    const resultLabel = document.getElementById('resultLabel');
+    const resultProb = document.getElementById('resultProb');
+
+    function reset() {
+      loading.classList.remove('show');
+      errorEl.classList.remove('show');
+      resultEl.classList.remove('show');
+    }
+
+    function showError(msg) {
+      reset();
+      errorEl.textContent = msg;
+      errorEl.classList.add('show');
+    }
+
+    zone.addEventListener('click', () => fileInput.click());
+
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('dragover');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      const f = e.dataTransfer?.files?.[0];
+      if (f) handleFile(f);
+    });
+
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files?.[0];
+      if (f) handleFile(f);
+    });
+
+    async function handleFile(file) {
+      reset();
+      const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '');
+      const allowed = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.webm'];
+      if (!allowed.includes(ext)) {
+        showError('Unsupported format. Use: ' + allowed.join(', '));
+        return;
+      }
+
+      loading.classList.add('show');
+
+      const form = new FormData();
+      form.append('file', file);
+
+      try {
+        const res = await fetch('/classify', {
+          method: 'POST',
+          body: form,
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          showError(data.detail || `Error ${res.status}`);
+          return;
+        }
+
+        loading.classList.remove('show');
+        resultEl.classList.add('show');
+        resultEl.classList.remove('emo', 'not-emo');
+        resultEl.classList.add(data.is_emo ? 'emo' : 'not-emo');
+        resultLabel.textContent = data.label;
+        resultProb.textContent = `${(data.probability * 100).toFixed(1)}% confidence`;
+      } catch (e) {
+        showError('Network error: ' + e.message);
+      }
+    }
+  </script>
+</body>
+</html>
