@@ -66,9 +66,23 @@ If you have local audio files:
    python predict.py audio path/to/song.mp3
    ```
 
-### 4. Web app (upload UI)
+### 4. Spotify 30-second previews (training from previews)
 
-Start the app and open http://localhost:8000 in your browser to upload MP3s and get classifications:
+Use Spotify's preview URLs to fetch training data without local audio files:
+
+```bash
+# 1. Fetch previews (requires Spotify credentials in .env)
+poetry run python -m spotify_preview_fetch
+
+# 2. Train on the downloaded previews
+poetry run python -m classifier_audio --audio-dir data/audio/spotify_previews
+```
+
+Previews are saved to `data/audio/spotify_previews/emo/` and `.../not_emo/`. Note: not all tracks have preview_url available.
+
+### 5. Web app (upload UI)
+
+Start the app and open http://localhost:8000 (or 8001 if 8000 is in use) in your browser to upload MP3s and get classifications:
 
 ```bash
 poetry run uvicorn api:app --reload --port 8000
@@ -86,6 +100,22 @@ curl -X POST -F "file=@song.mp3" http://localhost:8000/classify
 
 - Swagger docs: http://localhost:8000/docs
 - Accepts: MP3, WAV, FLAC, OGG, M4A, WebM
+
+### 6. Standalone app (downloadable)
+
+Run a local app that opens in your browser—upload audio and get prediction + confidence:
+
+```bash
+poetry run python standalone_app.py
+```
+
+Opens http://localhost:8765. To build a **distributable** (no Python required):
+
+```bash
+poetry run pyinstaller emo_classifier.spec
+```
+
+Zip `dist/EmoClassifier/` and share it. Users run `EmoClassifier.exe` (Windows) or `./EmoClassifier` (Mac/Linux); the browser opens automatically. See [docs/STANDALONE_APP.md](docs/STANDALONE_APP.md).
 
 ## Project Structure
 

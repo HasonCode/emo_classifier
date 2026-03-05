@@ -9,7 +9,7 @@ from typing import BinaryIO, Union
 import librosa
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, accuracy_score
@@ -58,28 +58,40 @@ def _resolve_audio_source(source: AudioSource, sr: int):
         return librosa.load(tmp.name, sr=sr, mono=True, duration=30)
 
 
+def _scalar(x) -> float:
+    """Convert numpy scalar or 0-d array to Python float."""
+    arr = np.asarray(x)
+    return float(arr.flat[0]) if arr.size > 0 else 0.0
+
+
 def extract_audio_features(audio_source: AudioSource, sr: int = 22050) -> dict:
     """Extract features from an audio file using Librosa.
     Accepts: file path (str/Path), bytes, or file-like object (e.g. upload stream).
     """
     y, sr = _resolve_audio_source(audio_source, sr)
+    if y is None or len(y) < sr:  # need at least 1 second
+        raise ValueError("Audio too short or empty")
 
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
     chroma = librosa.feature.chroma_stft(y=y, sr=sr)
     spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
     spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
+    spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
     zcr = librosa.feature.zero_crossing_rate(y)
+    rms = librosa.feature.rms(y=y)[0]
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
 
     return {
-        "mfcc_mean": np.mean(mfcc),
-        "mfcc_std": np.std(mfcc),
-        "chroma_mean": np.mean(chroma),
-        "chroma_std": np.std(chroma),
-        "spectral_centroid_mean": np.mean(spectral_centroid),
-        "spectral_rolloff_mean": np.mean(spectral_rolloff),
-        "zero_crossing_rate_mean": np.mean(zcr),
-        "tempo": float(tempo),
+        "mfcc_mean": _scalar(np.mean(mfcc)),
+        "mfcc_std": _scalar(np.std(mfcc)),
+        "chroma_mean": _scalar(np.mean(chroma)),
+        "chroma_std": _scalar(np.std(chroma)),
+        "spectral_centroid_mean": _scalar(np.mean(spectral_centroid)),
+        "spectral_rolloff_mean": _scalar(np.mean(spectral_rolloff)),
+        "spectral_bandwidth_mean": _scalar(np.mean(spectral_bandwidth)),
+        "zero_crossing_rate_mean": _scalar(np.mean(zcr)),
+        "rms_mean": _scalar(np.mean(rms)),
+        "tempo": _scalar(tempo),
     }
 
 
@@ -118,7 +130,8 @@ def build_audio_dataset(audio_dir: Path = None) -> pd.DataFrame:
         )
 
     rows = []
-    for _, row in file_df.iterrows():
+    total = len(file_df)
+    for i, (_, row) in enumerate(file_df.iterrows()):
         try:
             feats = extract_audio_features(row["path"])
             feats["is_emo"] = 1 if row["label"] == "emo" else 0
@@ -126,7 +139,14 @@ def build_audio_dataset(audio_dir: Path = None) -> pd.DataFrame:
             rows.append(feats)
         except Exception as e:
             print(f"Skipping {row['path']}: {e}")
+        if (i + 1) % 100 == 0:
+            print(f"  Processed {i + 1}/{total} files...")
 
+    if not rows:
+        raise ValueError(
+            "No audio files could be processed. Check file formats (MP3, WAV, FLAC) and try again."
+        )
+    print(f"Extracted features from {len(rows)} files")
     return pd.DataFrame(rows)
 
 
@@ -138,7 +158,8 @@ def train_classifier(df: pd.DataFrame = None, save: bool = True):
     feature_cols = [
         "mfcc_mean", "mfcc_std", "chroma_mean", "chroma_std",
         "spectral_centroid_mean", "spectral_rolloff_mean",
-        "zero_crossing_rate_mean", "tempo"
+        "spectral_bandwidth_mean", "zero_crossing_rate_mean",
+        "rms_mean", "tempo",
     ]
     X = df[feature_cols].fillna(0)
     y = df["is_emo"]
@@ -154,8 +175,19 @@ def train_classifier(df: pd.DataFrame = None, save: bool = True):
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    clf = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
-    clf.fit(X_train_scaled, y_train)
+    # Hyperparameter tuning for better accuracy
+    param_grid = {
+        "n_estimators": [100, 150, 200],
+        "max_depth": [8, 12, 16],
+        "min_samples_leaf": [1, 2, 4],
+    }
+    base_rf = RandomForestClassifier(random_state=42, class_weight="balanced")
+    grid = GridSearchCV(
+        base_rf, param_grid, cv=4, scoring="accuracy", n_jobs=-1, verbose=0
+    )
+    grid.fit(X_train_scaled, y_train)
+    clf = grid.best_estimator_
+    print(f"Best params: {grid.best_params_}")
 
     y_pred = clf.predict(X_test_scaled)
     print("Audio Emo Classifier - Performance")
@@ -209,13 +241,31 @@ def predict(audio_source: AudioSource) -> tuple[str, float]:
     proba = clf.predict_proba(X_scaled)[0]
     pred = clf.predict(X_scaled)[0]
     label = "Emo" if pred == 1 else "Not Emo"
-    emo_prob = proba[1]
+    emo_prob = _scalar(proba[1])
     return label, emo_prob
 
 
 def main():
     """Train the audio classifier."""
-    train_classifier()
+    import argparse
+    from config import SPOTIFY_PREVIEW_DIR
+    parser = argparse.ArgumentParser(description="Train emo classifier from audio files")
+    parser.add_argument(
+        "--audio-dir",
+        type=Path,
+        default=None,
+        help="Audio directory with emo/ and not_emo/ subdirs (default: data/audio). Use data/audio/spotify_previews for Spotify previews.",
+    )
+    args = parser.parse_args()
+    audio_dir = args.audio_dir
+    if audio_dir:
+        path = Path(audio_dir)
+        if not path.is_absolute():
+            path = path.resolve()
+        df = build_audio_dataset(path)
+    else:
+        df = None
+    train_classifier(df=df)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ MODELS_DIR = PROJECT_ROOT / "models"
 RAW_AUDIO_DIR = DATA_DIR / "audio"
 EMO_AUDIO_DIR = RAW_AUDIO_DIR / "emo"
 NOT_EMO_AUDIO_DIR = RAW_AUDIO_DIR / "not_emo"
+SPOTIFY_PREVIEW_DIR = RAW_AUDIO_DIR / "spotify_previews"
 
 # Create directories
 DATA_DIR.mkdir(exist_ok=True)
@@ -23,6 +24,8 @@ MODELS_DIR.mkdir(exist_ok=True)
 RAW_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 EMO_AUDIO_DIR.mkdir(exist_ok=True)
 NOT_EMO_AUDIO_DIR.mkdir(exist_ok=True)
+(SPOTIFY_PREVIEW_DIR / "emo").mkdir(parents=True, exist_ok=True)
+(SPOTIFY_PREVIEW_DIR / "not_emo").mkdir(parents=True, exist_ok=True)
 
 # Spotify config
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "")
@@ -30,10 +33,24 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "")
 
 # Genres for dataset building
 EMO_GENRES = ["emo", "emo-pop", "pop-punk", "post-hardcore", "screamo"]
+# Curated playlists = human-verified real emo (Spotify official, Emo Nite, etc.)
+EMO_PLAYLIST_IDS = [
+    "37i9dQZF1DX9wa6XirBPv8",  # Emo Forever (Spotify)
+    "4eC7Sa1Xcy33lKn53gfiZb",  # The Sound of Emo
+]
 NON_EMO_GENRES = [
     "pop", "rock", "hip-hop", "electronic", "country", "jazz",
-    "classical", "r-n-b", "reggae", "metal", "indie", "dance"
+    "classical", "r-n-b", "reggae", "metal", "indie", "dance",
+    "dance pop", "disco", "soul", "funk",  # distinctly non-emo
 ]
+# Artist genres that almost never overlap with emo (for Spotify URL override)
+# Match if artist genre equals or contains any of these (e.g. "classic soul" contains "soul")
+DEF_NOT_EMO_GENRES = frozenset({
+    "disco", "funk", "soul", "motown", "gospel", "reggaeton",
+    "bossa nova", "latin", "samba", "reggae", "dancehall",
+    "country", "bluegrass", "honky-tonk", "classical", "opera",
+    "r-n-b", "r&b", "rhythm and blues",
+})
 
 # Spotify audio features used for classification (when audio-features API is available)
 SPOTIFY_FEATURES = [
@@ -50,5 +67,6 @@ SPOTIFY_ALL_FEATURES = list(dict.fromkeys(SPOTIFY_FEATURES + SPOTIFY_FALLBACK_FE
 LIBROSA_FEATURE_NAMES = [
     "mfcc_mean", "mfcc_std", "chroma_mean", "chroma_std",
     "spectral_centroid_mean", "spectral_rolloff_mean",
-    "zero_crossing_rate_mean", "tempo"
+    "spectral_bandwidth_mean", "zero_crossing_rate_mean",
+    "rms_mean", "tempo",
 ]

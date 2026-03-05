@@ -1,0 +1,14 @@
+{
+  "feature_columns": [
+    "mfcc_mean",
+    "mfcc_std",
+    "chroma_mean",
+    "chroma_std",
+    "spectral_centroid_mean",
+    "spectral_rolloff_mean",
+    "spectral_bandwidth_mean",
+    "zero_crossing_rate_mean",
+    "rms_mean",
+    "tempo"
+  ]
+}

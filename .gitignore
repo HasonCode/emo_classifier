@@ -6,6 +6,20 @@ __pycache__/
 data/*.csv
 data/audio/emo/*
 data/audio/not_emo/*
+data/audio_verification_report.txt
 !data/audio/emo/.gitkeep
 !data/audio/not_emo/.gitkeep
+fma_metadata/
+fma_medium/
+# PyInstaller
+dist/
+build/
+*.spec.bak
 
+# Python packaging
+*.egg-info/
+*.egg
+.eggs/
+
+# Misc
+.cache/

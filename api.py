@@ -62,10 +62,16 @@ def _check_extension(filename: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
+def _calibrate_probability(prob: float) -> float:
+    """Dampen extreme probabilities to reduce overconfidence."""
+    return max(0.12, min(0.88, prob))
+
+
 @app.post("/classify", response_model=PredictionResponse)
 async def classify_audio(file: UploadFile = File(...)):
     """
     Upload an audio file and get emo/not emo classification.
+    Prefers audio model when available; else uses Spotify model with approximated features.
     Accepts: MP3, WAV, FLAC, OGG, M4A, WebM
     """
     if not _check_extension(file.filename or ""):
@@ -75,12 +81,6 @@ async def classify_audio(file: UploadFile = File(...)):
         )
 
     try:
-        from classifier_audio import predict
-    except FileNotFoundError as e:
-        raise HTTPException(503, detail=str(e))
-
-    # Read upload into bytes (predict accepts bytes for full format support)
-    try:
         data = await file.read()
     except Exception as e:
         raise HTTPException(422, detail=f"Could not read upload: {e}")
@@ -89,10 +89,23 @@ async def classify_audio(file: UploadFile = File(...)):
         raise HTTPException(422, detail="Empty file")
 
     try:
-        label, prob = predict(data)
+        # Prefer audio model (trained on real audio features) when available
+        from config import MODELS_DIR
+        audio_model = MODELS_DIR / "emo_classifier_audio.joblib"
+        if audio_model.exists():
+            from classifier_audio import predict as audio_predict
+            label, prob = audio_predict(data)
+        else:
+            from spotify_from_audio import extract_spotify_like_features
+            from classifier_spotify import predict as spotify_predict
+            features = extract_spotify_like_features(data)
+            label, prob = spotify_predict(features)
+    except FileNotFoundError as e:
+        raise HTTPException(503, detail=str(e))
     except Exception as e:
         raise HTTPException(422, detail=f"Could not process audio: {e}")
 
+    prob = _calibrate_probability(prob)
     return PredictionResponse(
         label=label,
         probability=round(prob, 4),
@@ -143,6 +156,7 @@ async def classify_spotify_url(body: SpotifyClassifyRequest = Body(...)):
             features = feats_list[0]
     except Exception:
         pass
+    track = None
     if not features:
         track = sp.track(track_id)
         features = {
@@ -151,12 +165,28 @@ async def classify_spotify_url(body: SpotifyClassifyRequest = Body(...)):
             "popularity": track.get("popularity", 0),
             "explicit": 1 if track.get("explicit") else 0,
         }
+    else:
+        track = sp.track(track_id)
+
+    # Genre-based override: if artist is in "definitely not emo" genres, require very high confidence
+    from config import DEF_NOT_EMO_GENRES
+    def_not_emo = False
+    if track and track.get("artists"):
+        try:
+            art = sp.artist(track["artists"][0]["id"])
+            genre_str = " ".join(art.get("genres") or []).lower()
+            def_not_emo = any(g in genre_str for g in DEF_NOT_EMO_GENRES)
+        except Exception:
+            pass
 
     try:
         label, prob = spotify_predict(features)
     except Exception as e:
         raise HTTPException(422, detail=f"Classification failed: {e}")
+    if def_not_emo and label == "Emo" and prob < 0.92:
+        label, prob = "Not Emo", 1.0 - prob
 
+    prob = _calibrate_probability(prob)
     return PredictionResponse(
         label=label,
         probability=round(prob, 4),

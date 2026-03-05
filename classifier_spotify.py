@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, accuracy_score
 import joblib
@@ -18,7 +20,8 @@ def load_dataset() -> pd.DataFrame:
     path = DATA_DIR / "spotify_emo_dataset.csv"
     if not path.exists():
         raise FileNotFoundError(
-            f"Dataset not found at {path}. Run: python -m spotify_data"
+            f"Dataset not found at {path}. Run: python -m spotify_data "
+            "(or python -m generate_seed_data if rate-limited)"
         )
     try:
         df = pd.read_csv(path)
@@ -64,7 +67,22 @@ def train_classifier(df: pd.DataFrame = None, save: bool = True):
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    clf = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
+    # Use simpler, well-calibrated model for few features (fallback case)
+    n_features = len(feature_cols)
+    if n_features <= 4:
+        base_clf = LogisticRegression(
+            max_iter=1000, random_state=42, class_weight="balanced", C=0.5
+        )
+        clf = CalibratedClassifierCV(base_clf, method="sigmoid", cv=5)
+    else:
+        base_clf = RandomForestClassifier(
+            n_estimators=100,
+            random_state=42,
+            max_depth=6,
+            min_samples_leaf=10,
+            class_weight="balanced",
+        )
+        clf = CalibratedClassifierCV(base_clf, method="isotonic", cv=5)
     clf.fit(X_train_scaled, y_train)
 
     y_pred = clf.predict(X_test_scaled)
@@ -104,19 +122,29 @@ def load_classifier():
     return clf, scaler, meta["feature_columns"]
 
 
+# Require higher confidence to predict Emo (reduces false positives like pop hits)
+EMO_DECISION_THRESHOLD = 0.75
+
+
 def predict(features: dict) -> tuple[str, float]:
     """
     Predict if a song is emo from Spotify audio features.
     Returns (label, probability) e.g. ("Emo", 0.85)
+    Uses EMO_DECISION_THRESHOLD to reduce false emo predictions.
     """
+    import numpy as np
     clf, scaler, feature_cols = load_classifier()
-    row = {c: features.get(c, 0) for c in feature_cols}
+    row = {}
+    for c in feature_cols:
+        v = features.get(c, 0)
+        arr = np.asarray(v)
+        row[c] = float(arr.flat[0]) if arr.size > 0 else 0.0
     X = pd.DataFrame([row])
     X_scaled = scaler.transform(X)
     proba = clf.predict_proba(X_scaled)[0]
-    pred = clf.predict(X_scaled)[0]
+    emo_prob = float(np.asarray(proba[1]).flat[0])
+    pred = 1 if emo_prob >= EMO_DECISION_THRESHOLD else 0
     label = "Emo" if pred == 1 else "Not Emo"
-    emo_prob = proba[1]
     return label, emo_prob
 
 
