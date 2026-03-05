@@ -19,8 +19,6 @@ a = Analysis(
         "api",
         "config",
         "classifier_audio",
-        "classifier_spotify",
-        "spotify_from_audio",
         "uvicorn.logging",
         "uvicorn.loops",
         "uvicorn.loops.auto",

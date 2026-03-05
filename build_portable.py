@@ -32,8 +32,6 @@ def main():
         ("api.py", "api.py"),
         ("config.py", "config.py"),
         ("classifier_audio.py", "classifier_audio.py"),
-        ("classifier_spotify.py", "classifier_spotify.py"),
-        ("spotify_from_audio.py", "spotify_from_audio.py"),
         ("requirements.txt", "requirements.txt"),
     ]
     for src, dst in to_copy:

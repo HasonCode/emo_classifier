@@ -45,4 +45,4 @@ Output: `dist/EmoClassifier/` containing:
 ### Platform Notes
 
 - Build on each target OS: Windows build produces `.exe`, macOS produces Unix executable, etc.
-- The app bundles the audio model; Spotify URL classification requires `.env` credentials (optional)
+- The app bundles the audio model; no Spotify or internet required

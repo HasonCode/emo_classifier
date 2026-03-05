@@ -88,8 +88,8 @@ Start the app and open http://localhost:8000 (or 8001 if 8000 is in use) in your
 poetry run uvicorn api:app --reload --port 8000
 ```
 
+- Audio upload only (uses the trained Librosa model)
 - Dark-themed upload page with drag-and-drop
-- Click or drop an MP3 to classify
 - Shows **Emo** or **Not Emo** with confidence %
 
 **API endpoint** `POST /classify` (for curl/Swagger):
